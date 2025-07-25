@@ -956,7 +956,7 @@ def main():
                 # Auto-limpar erro após mostrar
                 st.session_state.scan_error = None
 
-            # Campo de input principal (sempre disponível)
+            # Campo de input principal (sempre disponível) com auto-focus
             scan_id = st.text_input(
                 "📱 Digite ou escaneie o código do material:",
                 key="scanner_input",
@@ -964,6 +964,49 @@ def main():
                 help="⚡ Registro automático ao encontrar material",
                 on_change=process_scan
             )
+
+            # JavaScript para manter focus automático no campo
+            st.markdown("""
+            <script>
+            // Função para manter focus no input
+            function maintainFocus() {
+                const input = document.querySelector('input[aria-label="📱 Digite ou escaneie o código do material:"]');
+                if (input && document.activeElement !== input) {
+                    input.focus();
+                }
+            }
+            
+            // Manter focus quando a página carrega
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(maintainFocus, 100);
+            });
+            
+            // Manter focus continuamente (verifica a cada 500ms)
+            setInterval(maintainFocus, 500);
+            
+            // Refocar quando qualquer elemento perde o focus
+            document.addEventListener('blur', function(e) {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') {
+                    setTimeout(maintainFocus, 100);
+                }
+            }, true);
+            
+            // Refocar após cliques
+            document.addEventListener('click', function() {
+                setTimeout(maintainFocus, 200);
+            });
+            
+            // Refocar após mudanças no DOM (quando Streamlit atualiza)
+            const observer = new MutationObserver(function(mutations) {
+                setTimeout(maintainFocus, 100);
+            });
+            
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+            </script>
+            """, unsafe_allow_html=True)
 
         st.markdown('</div>', unsafe_allow_html=True)
 
