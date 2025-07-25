@@ -814,11 +814,20 @@ def main():
         if uploaded_file is not None:
             df = load_excel_file(uploaded_file)
             if df is not None:
+                # Tratamento imediato de dados para evitar erros de tipo
+                df['avanco'] = df['avanco'].fillna('').astype(str)
+                df['trait'] = df['trait'].fillna('N/A').astype(str)
+                df['id_codigo'] = df['id_codigo'].astype(str)
+                df['etapa_programa'] = df['etapa_programa'].fillna(
+                    '').astype(str)
+
                 st.success(f"✅ {len(df)} materiais carregados")
 
                 st.markdown("#### 🔍 Filtros")
-                avanco_options = ["Todos"] + \
-                    sorted(df['avanco'].unique().tolist())
+                # Criar lista de avanços limpa
+                avanco_unique = [
+                    v for v in df['avanco'].unique() if v and v.strip()]
+                avanco_options = ["Todos"] + sorted(avanco_unique)
                 avanco_filter = st.selectbox("Avanço:", avanco_options)
                 search_term = st.text_input(
                     "Buscar:", placeholder="ID ou etapa...")
@@ -839,12 +848,11 @@ def main():
         # Estatísticas em cards modernos
         st.markdown("### 📊 Visão Geral dos Materiais")
 
-        # Estatísticas por avanço - com tratamento de valores nulos
-        avanco_counts = filtered_df['avanco'].dropna().astype(
-            str).value_counts()
+        # Estatísticas por avanço - já tratadas
+        avanco_counts = filtered_df['avanco'].value_counts()
 
-        # Estatísticas por trait - com tratamento de valores nulos
-        trait_counts = filtered_df['trait'].dropna().astype(str).value_counts()
+        # Estatísticas por trait - já tratadas
+        trait_counts = filtered_df['trait'].value_counts()
 
         # Definir cores para traits
         trait_colors = {
@@ -908,9 +916,10 @@ def main():
         # SEÇÃO DO SCANNER
         st.markdown('<div class="scanner-area">', unsafe_allow_html=True)
 
-        # Limpar e filtrar valores de avanço (remover NaN e converter para string)
-        avanco_values = df['avanco'].dropna().astype(str).unique().tolist()
-        all_avancos = sorted([v for v in avanco_values if v and v != 'nan'])
+        # Usar valores já tratados do DataFrame
+        all_avancos = [v for v in filtered_df['avanco'].unique()
+                       if v and v.strip()]
+        all_avancos = sorted(all_avancos)
 
         if all_avancos:
             quick_avanco = st.selectbox(
