@@ -1,0 +1,38 @@
+{
+  "history": [
+    {
+      "id_codigo": "2",
+      "etapa_programa": "RET SR Centro",
+      "trait": "N/A",
+      "avanco": "Não",
+      "check_time": "25/07/2025 14:36:24",
+      "encontrado": "Não - Avanço incorreto"
+    },
+    {
+      "id_codigo": "2520",
+      "etapa_programa": "Não encontrado",
+      "trait": "N/A",
+      "avanco": "N/A",
+      "check_time": "25/07/2025 14:36:28",
+      "encontrado": "Não"
+    },
+    {
+      "id_codigo": "1032",
+      "etapa_programa": "Não encontrado",
+      "trait": "N/A",
+      "avanco": "N/A",
+      "check_time": "25/07/2025 14:36:33",
+      "encontrado": "Não"
+    },
+    {
+      "id_codigo": "7565",
+      "etapa_programa": "RET SR Centro",
+      "trait": "N/A",
+      "avanco": "Sim",
+      "check_time": "25/07/2025 14:37:12",
+      "encontrado": "Sim"
+    }
+  ],
+  "timestamp": "2025-07-25T14:37:12.390970",
+  "total_items": 4
+}

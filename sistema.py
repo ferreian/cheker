@@ -7,6 +7,8 @@ import tempfile
 from reportlab.lib.units import cm, mm
 from reportlab.pdfgen import canvas
 import logging
+import json
+import os
 
 # Configurar sistema de logs
 
@@ -26,54 +28,208 @@ def log_material_check(material_id, avanco_status, found, user_id="system"):
         f"Material check: ID={material_id}, Avanco={avanco_status}, Found={found}, User={user_id}")
 
 
+# Sistema de cache para persistência
+def save_to_cache(data, filename="material_checker_cache.json"):
+    """Salva dados no cache local"""
+    try:
+        cache_dir = "cache"
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir)
+
+        cache_path = os.path.join(cache_dir, filename)
+        with open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        logging.error(f"Erro ao salvar cache: {str(e)}")
+        return False
+
+
+def load_from_cache(filename="material_checker_cache.json"):
+    """Carrega dados do cache local"""
+    try:
+        cache_dir = "cache"
+        cache_path = os.path.join(cache_dir, filename)
+
+        if os.path.exists(cache_path):
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return None
+    except Exception as e:
+        logging.error(f"Erro ao carregar cache: {str(e)}")
+        return None
+
+
+def auto_save_history():
+    """Salva automaticamente o histórico no cache"""
+    if st.session_state.check_history:
+        cache_data = {
+            'history': st.session_state.check_history,
+            'timestamp': datetime.now().isoformat(),
+            'total_items': len(st.session_state.check_history)
+        }
+
+        if save_to_cache(cache_data):
+            # Status visual discreto do auto-save
+            st.session_state.last_autosave = datetime.now().strftime("%H:%M:%S")
+
+
+def restore_from_cache():
+    """Restaura histórico do cache se disponível"""
+    cached_data = load_from_cache()
+
+    if cached_data and 'history' in cached_data:
+        # Verificar se há dados no cache mais recentes que a sessão atual
+        cache_count = len(cached_data['history'])
+        session_count = len(st.session_state.get('check_history', []))
+
+        if cache_count > session_count:
+            return cached_data
+
+    return None
+
+
 def visual_feedback(feedback_type, material_data=None):
     """Feedback visual para o scanner"""
     if feedback_type == "found":
-        st.markdown("""
-        <div class="alert-success">
-            <i class="alert-icon">✅</i>
-            <div class="alert-content">
-                <strong>Material Encontrado!</strong>
-                <p>Item localizado com sucesso</p>
-            </div>
+        # Definir cores baseadas no trait
+        trait_value = material_data.get('trait', 'N/A')
+        trait_colors = {
+            'CE3': {'bg': '#8b5cf6', 'name': 'CE3 (ROXO)'},
+            'E3': {'bg': '#10b981', 'name': 'E3 (VERDE)'},
+            'CONV': {'bg': '#f59e0b', 'name': 'CONV (LARANJA)'}
+        }
+        color_config = trait_colors.get(
+            trait_value, {'bg': '#10b981', 'name': trait_value})
+
+        # Success com cor do trait
+        st.markdown(f"""
+        <div style="
+            background: {color_config['bg']};
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            margin: 1rem 0;
+            font-weight: 700;
+            font-size: 1.1rem;
+            text-align: center;
+            box-shadow: 0 4px 15px {color_config['bg']}66;
+        ">
+            ✅ <strong>MATERIAL REGISTRADO COM SUCESSO!</strong>
         </div>
         """, unsafe_allow_html=True)
+
+        # Container com informações usando colunas
+        with st.container():
+            st.markdown(f"### 📋 Informações do Material")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.metric(
+                    label="🆔 ID Código",
+                    value=material_data['id']
+                )
+
+                st.markdown(f"""
+                <div style="margin-bottom: 1rem;">
+                    <div style="color: #666; font-size: 0.8rem; margin-bottom: 0.3rem;">🎯 TRAIT</div>
+                    <div style="
+                        background: {color_config['bg']};
+                        color: white;
+                        padding: 0.5rem 1rem;
+                        border-radius: 8px;
+                        font-weight: 700;
+                        font-size: 1.1rem;
+                        text-align: center;
+                        box-shadow: 0 2px 8px {color_config['bg']}40;
+                    ">
+                        {color_config['name']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col2:
+                st.metric(
+                    label="📊 Avanço",
+                    value=material_data['avanco']
+                )
+
+                st.metric(
+                    label="⏰ Registrado",
+                    value=material_data['time']
+                )
+
+            # Etapa programa em linha completa - ainda maior, sem border lateral
+            st.markdown(f"""
+            <div style="margin: 1.5rem 0;">
+                <div style="color: #666; font-size: 0.8rem; margin-bottom: 0.5rem;">📝 ETAPA PROGRAMA</div>
+                <div style="
+                    font-size: 1.8rem;
+                    font-weight: 900;
+                    color: #1e293b;
+                    text-transform: uppercase;
+                    letter-spacing: 2px;
+                    line-height: 1.2;
+                    background: #f8f9fa;
+                    padding: 1.5rem;
+                    border-radius: 10px;
+                    text-align: center;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                ">
+                    {material_data['etapa']}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Mensagem de prontidão também com cor do trait
+            st.markdown(f"""
+            <div style="
+                background: {color_config['bg']};
+                color: white;
+                padding: 1rem 1.5rem;
+                border-radius: 10px;
+                margin: 1rem 0;
+                font-weight: 600;
+                text-align: center;
+                box-shadow: 0 4px 15px {color_config['bg']}40;
+                opacity: 0.9;
+            ">
+                🎯 <strong>Pronto para o próximo material!</strong>
+            </div>
+            """, unsafe_allow_html=True)
 
     elif feedback_type == "error":
         st.markdown("""
-        <div class="alert-error">
-            <i class="alert-icon">❌</i>
-            <div class="alert-content">
-                <strong>Material Não Encontrado</strong>
-                <p>Verifique o código e tente novamente</p>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Alert vermelho adicional para material não encontrado
-        st.markdown("""
-        <div class="trait-alert" style="
-            background: #ef4444;
-            color: #ffffff;
+        <div style="
+            background: #dc2626;
+            color: white;
             padding: 1rem 1.5rem;
-            border-radius: 12px;
+            border-radius: 10px;
             margin: 1rem 0;
+            font-weight: 700;
+            font-size: 1.1rem;
             text-align: center;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
         ">
-            🔴 Material não localizado no sistema
+            ❌ <strong>Material Não Encontrado</strong> - Verifique o código e tente novamente
         </div>
         """, unsafe_allow_html=True)
 
     elif feedback_type == "warning":
         st.markdown("""
-        <div class="alert-error">
-            <i class="alert-icon">❌</i>
-            <div class="alert-content">
-                <strong>Status de Avanço Incorreto</strong>
-                <p>Material encontrado com avanço diferente</p>
-            </div>
+        <div style="
+            background: #dc2626;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            margin: 1rem 0;
+            font-weight: 700;
+            font-size: 1.1rem;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
+        ">
+            ❌ <strong>Status de Avanço Incorreto</strong> - Material encontrado com avanço diferente
         </div>
         """, unsafe_allow_html=True)
 
@@ -115,15 +271,26 @@ def export_report(df, check_history):
 def filter_materials(df, avanco_filter=None, id_search=None):
     """Filtra os materiais baseado nos critérios selecionados"""
     filtered_df = df.copy()
+
+    # Garantir que colunas críticas existam e tratar valores nulos
+    if 'avanco' in filtered_df.columns:
+        filtered_df['avanco'] = filtered_df['avanco'].fillna('').astype(str)
+    if 'trait' in filtered_df.columns:
+        filtered_df['trait'] = filtered_df['trait'].fillna('N/A').astype(str)
+    if 'id_codigo' in filtered_df.columns:
+        filtered_df['id_codigo'] = filtered_df['id_codigo'].astype(str)
+
     if avanco_filter and avanco_filter != "Todos":
         filtered_df = filtered_df[filtered_df['avanco'] == avanco_filter]
+
     if id_search:
-        mask = filtered_df['id_codigo'].astype(str).str.contains(
+        mask = filtered_df['id_codigo'].str.contains(
             str(id_search), case=False, na=False)
         if 'etapa_programa' in filtered_df.columns:
             mask |= filtered_df['etapa_programa'].astype(str).str.contains(
                 str(id_search), case=False, na=False)
         filtered_df = filtered_df[mask]
+
     return filtered_df
 
 
@@ -156,10 +323,30 @@ def process_scan():
         current_material_avanco = material_row['avanco']
 
         if current_material_avanco == quick_avanco:
-            st.session_state.scanner_state = "found"
-            st.session_state.current_material = scan_id_clean
-            st.session_state.found_material_data = material_row.to_dict()
-            st.session_state.scan_success = True
+            # Material encontrado com avanço correto - registrar automaticamente
+            st.session_state.check_history.append({
+                'id_codigo': scan_id_clean,
+                'etapa_programa': material_row.get('etapa_programa', 'Sem etapa'),
+                'trait': material_row.get('trait', 'Sem trait'),
+                'avanco': current_material_avanco,
+                'check_time': current_time,
+                'encontrado': 'Sim'
+            })
+
+            log_material_check(scan_id_clean, current_material_avanco, True)
+
+            # Auto-save no cache após cada registro
+            auto_save_history()
+
+            # Definir dados para o warning de sucesso
+            st.session_state.last_success = {
+                'id': scan_id_clean,
+                'etapa': material_row.get('etapa_programa', 'Sem etapa'),
+                'trait': material_row.get('trait', 'Sem trait'),
+                'avanco': current_material_avanco,
+                'time': current_time
+            }
+
         else:
             st.session_state.check_history.append({
                 'id_codigo': scan_id_clean,
@@ -183,6 +370,7 @@ def process_scan():
         log_material_check(scan_id_clean, 'N/A', False)
         st.session_state.scan_error = f"ID '{scan_id_clean}' não encontrado!"
 
+    # Limpar campo de input automaticamente
     st.session_state.scanner_input = ""
 
 
@@ -397,12 +585,12 @@ def main():
     /* Material found card */
     .material-found {
         background: white;
-        border-radius: 15px;
-        padding: 2rem;
+        border-radius: 25px;
+        padding: 2.5rem 3rem;
         margin: 2rem auto;
-        max-width: 500px;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-        border: 2px solid #10b981;
+        max-width: 600px;
+        box-shadow: 0 25px 80px rgba(0,0,0,0.15);
+        border: 4px solid #10b981;
         text-align: center;
         animation: bounceIn 0.5s ease-out;
     }
@@ -423,6 +611,24 @@ def main():
             opacity: 1;
             transform: scale(1);
         }
+    }
+    
+    .material-info {
+        background: #f1f5f9;
+        border-radius: 15px;
+        padding: 2rem;
+        margin: 1.5rem 0;
+        border-left: 6px solid #6b7280;
+        text-align: left;
+    }
+    
+    .material-info p {
+        margin: 0.3rem 0;
+        font-size: 1rem;
+    }
+    
+    .material-info strong {
+        color: #1e293b;
     }
     
     .material-info {
@@ -496,31 +702,6 @@ def main():
         border: 2px solid #e1e8ed;
     }
     
-    /* Sound indicator */
-    .sound-indicator {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 25px;
-        text-align: center;
-        margin: 1rem 0;
-        font-weight: 600;
-        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-        animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-        0% {
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-        }
-        50% {
-            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.5);
-        }
-        100% {
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-        }
-    }
-    
     /* Progress bar customizado */
     .stProgress > div > div > div > div {
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
@@ -541,7 +722,7 @@ def main():
             margin: 1rem 0;
         }
         
-        .material-found {
+        .success-message {
             padding: 1.5rem;
             margin: 1rem;
         }
@@ -551,6 +732,37 @@ def main():
 
     # Inicializar sistema de logs
     setup_logging()
+
+    # Verificar e restaurar cache se disponível
+    cached_data = restore_from_cache()
+    if cached_data:
+        with st.sidebar:
+            st.markdown("### 🔄 Cache Detectado")
+            cache_info = f"""
+            **Dados salvos encontrados:**
+            - {cached_data['total_items']} registros
+            - Última atualização: {datetime.fromisoformat(cached_data['timestamp']).strftime('%d/%m/%Y %H:%M:%S')}
+            """
+            st.info(cache_info)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("📥 Restaurar", help="Restaurar dados do cache"):
+                    st.session_state.check_history = cached_data['history']
+                    st.success("✅ Dados restaurados do cache!")
+                    st.rerun()
+
+            with col2:
+                if st.button("🗑️ Limpar Cache", help="Apagar dados salvos"):
+                    try:
+                        cache_path = os.path.join(
+                            "cache", "material_checker_cache.json")
+                        if os.path.exists(cache_path):
+                            os.remove(cache_path)
+                        st.success("✅ Cache limpo!")
+                        st.rerun()
+                    except:
+                        st.error("❌ Erro ao limpar cache")
 
     # Header principal adaptado
     st.markdown("""
@@ -563,14 +775,12 @@ def main():
     # Inicializar estados da sessão
     session_defaults = {
         'check_history': [],
-        'scanner_state': "ready",
-        'current_material': None,
-        'found_material_data': None,
         'show_animations': True,
         'scanner_input': "",
-        'scan_success': False,
         'scan_error': None,
-        'last_processed': ""
+        'last_processed': "",
+        'last_success': None,
+        'last_autosave': None
     }
 
     for key, default in session_defaults.items():
@@ -592,6 +802,12 @@ def main():
                 "🎬 Animações visuais",
                 value=st.session_state.show_animations
             )
+
+            # Status do auto-save
+            if st.session_state.last_autosave:
+                st.success(f"💾 Último save: {st.session_state.last_autosave}")
+            else:
+                st.info("💾 Auto-save ativo")
 
         # Processamento do arquivo
         df = None
@@ -623,11 +839,12 @@ def main():
         # Estatísticas em cards modernos
         st.markdown("### 📊 Visão Geral dos Materiais")
 
-        # Estatísticas por avanço
-        avanco_counts = filtered_df['avanco'].value_counts()
+        # Estatísticas por avanço - com tratamento de valores nulos
+        avanco_counts = filtered_df['avanco'].dropna().astype(
+            str).value_counts()
 
-        # Estatísticas por trait
-        trait_counts = filtered_df['trait'].value_counts()
+        # Estatísticas por trait - com tratamento de valores nulos
+        trait_counts = filtered_df['trait'].dropna().astype(str).value_counts()
 
         # Definir cores para traits
         trait_colors = {
@@ -691,7 +908,10 @@ def main():
         # SEÇÃO DO SCANNER
         st.markdown('<div class="scanner-area">', unsafe_allow_html=True)
 
-        all_avancos = sorted(filtered_df['avanco'].unique().tolist())
+        # Limpar e filtrar valores de avanço (remover NaN e converter para string)
+        avanco_values = df['avanco'].dropna().astype(str).unique().tolist()
+        all_avancos = sorted([v for v in avanco_values if v and v != 'nan'])
+
         if all_avancos:
             quick_avanco = st.selectbox(
                 "🎯 Procurar materiais com avanço:",
@@ -700,115 +920,41 @@ def main():
             )
             st.session_state.current_quick_avanco = quick_avanco
 
-            # SCANNER LOGIC
-            if st.session_state.scanner_state == "ready":
-                st.markdown(
-                    f'<div class="scanner-status" style="background: #f8f9fa; color: #1e293b;">🔍 Scanner Ativo - Procurando: {quick_avanco}</div>', unsafe_allow_html=True)
+            # Status do scanner
+            st.markdown(
+                f'<div class="scanner-status" style="background: #f8f9fa; color: #1e293b;">🔍 Scanner Ativo - Procurando: {quick_avanco}</div>', unsafe_allow_html=True)
 
-                # Mostrar mensagens de resultado
-                if st.session_state.scan_success:
-                    if st.session_state.show_animations:
-                        visual_feedback("found")
-                    st.session_state.scan_success = False
+            # Mostrar warning de sucesso expandido
+            if st.session_state.last_success:
+                visual_feedback("found", st.session_state.last_success)
 
-                if st.session_state.scan_error:
-                    if "Avanço incorreto" in st.session_state.scan_error:
-                        visual_feedback("warning")
-                    else:
-                        visual_feedback("error")
-                    st.session_state.scan_error = None
+                # Auto-limpar após 3 segundos
+                import time
+                if 'success_time' not in st.session_state:
+                    st.session_state.success_time = time.time()
+                elif time.time() - st.session_state.success_time > 3:
+                    st.session_state.last_success = None
+                    if 'success_time' in st.session_state:
+                        del st.session_state.success_time
 
-                # Campo de input principal
-                scan_id = st.text_input(
-                    "📱 Digite ou escaneie o código do material:",
-                    key="scanner_input",
-                    placeholder="ID do material...",
-                    help="⚡ Campo com limpeza automática",
-                    on_change=process_scan
-                )
+            # Mostrar mensagens de erro
+            if st.session_state.scan_error:
+                if "Avanço incorreto" in st.session_state.scan_error:
+                    visual_feedback("warning")
+                else:
+                    visual_feedback("error")
 
-            elif st.session_state.scanner_state == "found":
-                material_data = st.session_state.found_material_data
-                scan_id = st.session_state.current_material
+                # Auto-limpar erro após mostrar
+                st.session_state.scan_error = None
 
-                # Definir cores baseadas no trait
-                trait_value = material_data.get('trait', 'N/A')
-                trait_colors = {
-                    'CE3': {'bg': '#8b5cf6', 'text': '#ffffff', 'name': 'CE3 (ROXO)'},
-                    'E3': {'bg': '#10b981', 'text': '#ffffff', 'name': 'E3 (VERDE)'},
-                    'CONV': {'bg': '#f59e0b', 'text': '#ffffff', 'name': 'CONV (LARANJA)'}
-                }
-
-                # Usar cor padrão se trait não for reconhecido
-                color_config = trait_colors.get(
-                    trait_value, {'bg': '#6b7280', 'text': '#ffffff', 'name': trait_value})
-
-                st.markdown(f"""
-                <div class="material-found">
-                    <h3 style="color: #1e293b; margin-bottom: 1rem;">✅ Material Localizado!</h3>
-                    <div class="material-info">
-                        <p><strong>ID Código:</strong> {scan_id}</p>
-                        <p style="font-size: 1.2rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;"><strong>ETAPA PROGRAMA:</strong> {material_data.get('etapa_programa', 'Não informado')}</p>
-                        <p><strong>Trait:</strong> {color_config['name']}</p>
-                        <p><strong>Avanço:</strong> {material_data['avanco']}</p>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                # Alert colorido baseado no trait
-                st.markdown(f"""
-                <div class="trait-alert" style="
-                    background: {color_config['bg']};
-                    color: {color_config['text']};
-                    padding: 1rem 1.5rem;
-                    border-radius: 12px;
-                    margin: 1rem 0;
-                    text-align: center;
-                    font-weight: 600;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                ">
-                    🎯 Tipo: {color_config['name']}
-                </div>
-                """, unsafe_allow_html=True)
-
-                # Botões de ação
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    if st.button("✅ Confirmar", type="primary", key="confirm_btn", use_container_width=True):
-                        current_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                        st.session_state.check_history.append({
-                            'id_codigo': scan_id,
-                            'etapa_programa': material_data.get('etapa_programa', 'Sem etapa'),
-                            'trait': material_data.get('trait', 'N/A'),
-                            'avanco': material_data['avanco'],
-                            'check_time': current_time,
-                            'encontrado': 'Sim'
-                        })
-
-                        log_material_check(
-                            scan_id, material_data['avanco'], True)
-
-                        st.balloons()
-
-                        # Reset scanner
-                        st.session_state.scanner_state = "ready"
-                        st.session_state.current_material = None
-                        st.session_state.found_material_data = None
-                        st.session_state.scanner_input = ""
-                        st.session_state.last_processed = ""
-
-                        st.rerun()
-
-                with col2:
-                    if st.button("⏭️ Pular", key="skip_btn", use_container_width=True):
-                        # Reset sem salvar
-                        st.session_state.scanner_state = "ready"
-                        st.session_state.current_material = None
-                        st.session_state.found_material_data = None
-                        st.session_state.scanner_input = ""
-                        st.session_state.last_processed = ""
-                        st.rerun()
+            # Campo de input principal (sempre disponível)
+            scan_id = st.text_input(
+                "📱 Digite ou escaneie o código do material:",
+                key="scanner_input",
+                placeholder="ID do material...",
+                help="⚡ Registro automático ao encontrar material",
+                on_change=process_scan
+            )
 
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -863,17 +1009,36 @@ def main():
             with st.expander("📋 Histórico Detalhado de Checagens", expanded=True):
                 history_df = pd.DataFrame(st.session_state.check_history)
 
-                # Configurar cores das colunas
-                def color_status(val):
-                    if val == 'Sim':
-                        return 'background-color: #dcfce7; color: #166534'
-                    elif 'incorreto' in str(val):
-                        return 'background-color: #fef3c7; color: #92400e'
-                    else:
-                        return 'background-color: #fef2f2; color: #dc2626'
+                # Função para colorir status baseado no trait
+                def color_status_by_trait(row):
+                    styles = []
+                    for col in row.index:
+                        if col == 'encontrado':
+                            if row[col] == 'Sim':
+                                # Usar cor baseada no trait
+                                trait = row.get('trait', 'N/A')
+                                trait_colors = {
+                                    'CE3': 'background-color: #8b5cf6; color: white; font-weight: 700;',  # Roxo
+                                    'E3': 'background-color: #10b981; color: white; font-weight: 700;',   # Verde
+                                    'CONV': 'background-color: #f59e0b; color: white; font-weight: 700;'  # Laranja
+                                }
+                                styles.append(trait_colors.get(
+                                    trait, 'background-color: #10b981; color: white; font-weight: 700;'))
+                            elif 'incorreto' in str(row[col]):
+                                # Amarelo para avanço incorreto
+                                styles.append(
+                                    'background-color: #fef3c7; color: #92400e; font-weight: 600;')
+                            else:
+                                # Vermelho para não encontrado
+                                styles.append(
+                                    'background-color: #fef2f2; color: #dc2626; font-weight: 600;')
+                        else:
+                            styles.append('')
+                    return styles
 
-                styled_df = history_df.style.applymap(
-                    color_status, subset=['encontrado'])
+                # Aplicar estilo ao DataFrame
+                styled_df = history_df.style.apply(
+                    color_status_by_trait, axis=1)
                 st.dataframe(styled_df, use_container_width=True,
                              hide_index=True)
 
@@ -884,19 +1049,25 @@ def main():
             with col1:
                 if st.button("🗑️ Limpar Histórico", use_container_width=True):
                     st.session_state.check_history = []
-                    st.success("✅ Histórico limpo!")
+                    # Limpar cache também
+                    try:
+                        cache_path = os.path.join(
+                            "cache", "material_checker_cache.json")
+                        if os.path.exists(cache_path):
+                            os.remove(cache_path)
+                    except:
+                        pass
+                    st.success("✅ Histórico e cache limpos!")
                     st.rerun()
 
             with col2:
                 if st.button("🔄 Resetar Scanner", use_container_width=True):
                     # Reset completo
-                    reset_keys = ['scanner_state', 'current_material', 'found_material_data',
-                                  'scanner_input', 'last_processed', 'scan_error', 'scan_success']
+                    reset_keys = ['scanner_input', 'last_processed', 'scan_error',
+                                  'last_success']
                     for key in reset_keys:
-                        if key == 'scanner_state':
-                            st.session_state[key] = "ready"
-                        elif key in ['scan_error', 'scan_success']:
-                            st.session_state[key] = None if key == 'scan_error' else False
+                        if key == 'scan_error':
+                            st.session_state[key] = None
                         else:
                             st.session_state[key] = "" if 'input' in key or 'processed' in key else None
 
